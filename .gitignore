@@ -1,0 +1,7 @@
+/target
+
+# Ignore the songs directory, which contains personal music files
+/songs
+
+# 言わずもがな
+.DS_Store
