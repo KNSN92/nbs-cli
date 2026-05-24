@@ -26,6 +26,7 @@ use rtrb::{Producer, RingBuffer};
 pub fn command_play(
     file: String,
     custom_instrument_dir: Option<String>,
+    volume: u8,
     looping: bool,
 ) -> Result<()> {
     let mut nbs = match Nbs::open(&file) {
@@ -102,10 +103,11 @@ pub fn command_play(
 
     let (end_send, end_recv) = mpsc::channel();
     let mut end_send = Some(end_send);
+    let volume = volume as f32 / 100.0;
     if monoral {
-        spawn_monoral_producer_thread(producer, renderer);
+        spawn_monoral_producer_thread(producer, renderer, volume);
     } else {
-        spawn_stereo_producer_thread(producer, renderer);
+        spawn_stereo_producer_thread(producer, renderer, volume);
     };
     let data_callback = move |output: &mut [f32], _info: &OutputCallbackInfo| {
         if consumer.is_empty() && consumer.is_abandoned() {
@@ -133,7 +135,11 @@ pub fn command_play(
 }
 
 // TODO: marge this function and `spawn_monoral_producer_thread`
-fn spawn_stereo_producer_thread(mut producer: Producer<f32>, mut renderer: NbsAudioRenderer) {
+fn spawn_stereo_producer_thread(
+    mut producer: Producer<f32>,
+    mut renderer: NbsAudioRenderer,
+    volume: f32,
+) {
     thread::spawn(move || {
         let mut buf = vec![0.0; 1024].into_boxed_slice();
         let mut remaining_len = 0;
@@ -149,8 +155,8 @@ fn spawn_stereo_producer_thread(mut producer: Producer<f32>, mut renderer: NbsAu
             let mut produced = remaining_len;
             for frame in buf[remaining_len..].chunks_exact_mut(2) {
                 if let Some([l, r]) = renderer.next() {
-                    frame[0] = l;
-                    frame[1] = r;
+                    frame[0] = l * volume;
+                    frame[1] = r * volume;
                     produced += 2;
                 } else {
                     ended = true;
@@ -165,7 +171,11 @@ fn spawn_stereo_producer_thread(mut producer: Producer<f32>, mut renderer: NbsAu
     });
 }
 
-fn spawn_monoral_producer_thread(mut producer: Producer<f32>, mut renderer: NbsAudioRenderer) {
+fn spawn_monoral_producer_thread(
+    mut producer: Producer<f32>,
+    mut renderer: NbsAudioRenderer,
+    volume: f32,
+) {
     thread::spawn(move || {
         let mut buf = vec![0.0; 1024].into_boxed_slice();
         let mut remaining_len = 0;
@@ -181,7 +191,7 @@ fn spawn_monoral_producer_thread(mut producer: Producer<f32>, mut renderer: NbsA
             let mut produced = remaining_len;
             for sample in &mut buf[remaining_len..] {
                 if let Some([l, r]) = renderer.next() {
-                    *sample = (l + r) / 2.0;
+                    *sample = (l + r) / 2.0 * volume;
                     produced += 1;
                 } else {
                     ended = true;

@@ -25,6 +25,8 @@ enum Commands {
         // TODO: Adaptive Locatingを作成する。nbsファイルと同じディレクトリの下のディレクトリからカスタム楽器を探索し、読み込む事を試みる。また、custom_instrument_dirオプションが指定された場合はそちらを優先する。こういう時の為にInstrumentAudioProviderをトレイトにしておいたんですね〜
         #[arg(long, help = "Use adaptive custom instrument locating")]
         adaptive_locating: bool,
+        #[arg(long, help = "Set the playback volume percentage (0%~200%)", default_value_t = 100, value_parser = clap::value_parser!(u8).range(0..=200))]
+        volume: u8,
         #[arg(
             short,
             long,
@@ -43,7 +45,8 @@ fn main() -> Result<()> {
             file,
             custom_instrument_dir,
             adaptive_locating: _,
+            volume,
             r#loop,
-        } => command_play(file, custom_instrument_dir, r#loop),
+        } => command_play(file, custom_instrument_dir, volume, r#loop),
     }
 }
