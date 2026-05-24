@@ -31,7 +31,7 @@ enum Commands {
             default_value_t = false,
             help = "Loop the song indefinitely (overrides any loop settings in the file)"
         )]
-        looping: bool,
+        r#loop: bool,
     },
 }
 
@@ -43,7 +43,7 @@ fn main() -> Result<()> {
             file,
             custom_instrument_dir,
             adaptive_locating: _,
-            looping,
-        } => command_play(file, custom_instrument_dir, looping),
+            r#loop,
+        } => command_play(file, custom_instrument_dir, r#loop),
     }
 }
