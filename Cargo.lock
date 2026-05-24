@@ -558,6 +558,7 @@ dependencies = [
  "cpal",
  "nbs-rust",
  "rtrb",
+ "walkdir",
 ]
 
 [[package]]

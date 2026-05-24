@@ -12,3 +12,4 @@ console = "0.16.3"
 cpal = "0.17.3"
 nbs-rust = { path = "./nbs-rust", features = ["audio", "midi"] }
 rtrb = "0.3.4"
+walkdir = "2.5.0"

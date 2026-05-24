@@ -1,4 +1,5 @@
 use std::{
+    collections::{BTreeSet, HashMap, HashSet},
     ffi::OsStr,
     fs::File,
     io::Read,
@@ -7,7 +8,7 @@ use std::{
     thread,
 };
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use console::style;
 use cpal::{
     OutputCallbackInfo,
@@ -19,13 +20,16 @@ use nbs_rust::{
         NbsAudioRenderer,
         provider::{FileAudioProvider, InstrumentAudioProvider, VanillaAudioProvider},
     },
+    instrument::InstrumentSet,
     io::midi::decoder::decode_from_midi,
 };
 use rtrb::{Producer, RingBuffer};
+use walkdir::WalkDir;
 
 pub fn command_play(
     file: String,
     custom_instrument_dir: Option<String>,
+    adaptive_locating: bool,
     volume: u8,
     looping: bool,
 ) -> Result<()> {
@@ -72,6 +76,13 @@ pub fn command_play(
         let dir = custom_instrument_dir
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf());
+        //TODO: Skip adaptive locating if dir is already contains all custom instruments
+        let dir = if adaptive_locating {
+            adaptive_locate_custom_instrument_dir(dir, &nbs.instrument_set)?
+                .context("No custom instruments found even with adaptive locating.")?
+        } else {
+            dir
+        };
         let (audio_provider, failed_custom_instruments) = FileAudioProvider::from_directory(
             &dir,
             &nbs.instrument_set,
@@ -204,4 +215,61 @@ fn spawn_monoral_producer_thread(
             buf.copy_within((buf_len - remaining_len).., 0);
         }
     });
+}
+
+const MAX_ADAPTIVE_LOCATING_DEPTH: usize = 5;
+
+fn adaptive_locate_custom_instrument_dir(
+    file: PathBuf,
+    instrument_set: &InstrumentSet,
+) -> Result<Option<PathBuf>> {
+    let custom_instrument_file_names = instrument_set
+        .as_slice()
+        .iter()
+        .filter_map(|ci| {
+            PathBuf::from(&ci.file_name)
+                .file_name()
+                .and_then(|s| s.to_str().map(str::to_string))
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut custom_instrument_dir_candidates = HashMap::new();
+    let walkdir = WalkDir::new(file)
+        .max_depth(MAX_ADAPTIVE_LOCATING_DEPTH)
+        .follow_links(false)
+        .follow_root_links(false);
+    for file in walkdir.into_iter() {
+        let file = file?;
+        if !file.metadata()?.is_file() {
+            continue;
+        }
+        let file_name = file
+            .file_name()
+            .to_str()
+            .map(str::to_string)
+            .context("An invalid character contains in the custom instrument file name")?;
+        if let Ok(index) = custom_instrument_file_names.binary_search(&file_name) {
+            let parent_dir = file.path().parent().unwrap().to_path_buf();
+            let (found, found_instruments) = custom_instrument_dir_candidates
+                .entry(parent_dir)
+                .or_insert((0, vec![false; custom_instrument_file_names.len()]));
+            if !found_instruments[index] {
+                *found += 1;
+                found_instruments[index] = true;
+                if *found == custom_instrument_file_names.len() {
+                    return Ok(Some(file.path().parent().unwrap().to_path_buf()));
+                }
+            }
+        }
+    }
+    if custom_instrument_dir_candidates.is_empty() {
+        Ok(None)
+    } else {
+        let (best_dir, _) = custom_instrument_dir_candidates
+            .into_iter()
+            .max_by_key(|(_, (found_count, _))| *found_count)
+            .unwrap();
+        Ok(Some(best_dir))
+    }
 }

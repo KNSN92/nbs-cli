@@ -44,9 +44,15 @@ fn main() -> Result<()> {
         Commands::Play {
             file,
             custom_instrument_dir,
-            adaptive_locating: _,
+            adaptive_locating,
             volume,
             r#loop,
-        } => command_play(file, custom_instrument_dir, volume, r#loop),
+        } => command_play(
+            file,
+            custom_instrument_dir,
+            adaptive_locating,
+            volume,
+            r#loop,
+        ),
     }
 }
