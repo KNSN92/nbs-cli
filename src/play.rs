@@ -224,7 +224,7 @@ fn adaptive_locate_custom_instrument_dir(
     instrument_set: &InstrumentSet,
 ) -> Result<Option<PathBuf>> {
     let custom_instrument_file_names = instrument_set
-        .as_slice()
+        .all_custom_instruments()
         .iter()
         .filter_map(|ci| {
             PathBuf::from(&ci.file_name)
