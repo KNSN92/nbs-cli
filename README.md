@@ -13,6 +13,7 @@ But it using also to test the [nbs-rust crate](https://github.com/KNSN92/nbs-rus
   - [ ] Adaptive custom instrument loading
 - [ ] Midi to nbs conversion
 - [ ] To audio files(wav/mp3) conversion
+- [ ] Bundle a nbs file and custom instrument into a single zip file, and play it without extracting
 
 ## Usage
 
