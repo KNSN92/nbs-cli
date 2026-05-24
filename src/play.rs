@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     ffi::OsStr,
     fs::File,
     io::Read,
@@ -35,26 +35,25 @@ pub fn command_play(
 ) -> Result<()> {
     let mut nbs = match Nbs::open(&file) {
         Ok(nbs) => nbs,
-        Err(nbs_e) => match {
+        Err(nbs_e) => {
             let mut buf = Vec::new();
-            let mut file = File::open(&file)?;
-            file.read_to_end(&mut buf)?;
-            decode_from_midi(&buf)
-        } {
-            Ok(mut nbs) => {
-                let song_name = Path::new(&file)
-                    .file_prefix()
-                    .and_then(OsStr::to_str)
-                    .unwrap_or("Unnamed Midi Song");
-                nbs.header.song_info.name = song_name.to_string();
-                nbs
+            File::open(&file)?.read_to_end(&mut buf)?;
+            match decode_from_midi(&buf) {
+                Ok(mut nbs) => {
+                    let song_name = Path::new(&file)
+                        .file_prefix()
+                        .and_then(OsStr::to_str)
+                        .unwrap_or("Unnamed Midi Song");
+                    nbs.header.song_info.name = song_name.to_string();
+                    nbs
+                }
+                Err(midi_e) => bail!(
+                    "Failed to open given file as NBS or MIDI: \n- NBS error: {}\n- MIDI error: {}",
+                    nbs_e,
+                    midi_e
+                ),
             }
-            Err(midi_e) => bail!(
-                "Failed to open given file as NBS or MIDI: \n- NBS error: {}\n- MIDI error: {}",
-                nbs_e,
-                midi_e
-            ),
-        },
+        }
     };
     if looping {
         nbs.header.song_meta.looping.enabled = true;
@@ -95,13 +94,11 @@ pub fn command_play(
                 dir.join(&ci.file_name).display()
             );
         }
-        let audio_provider = Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>;
-        audio_provider
+        Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>
     } else {
         let audio_provider =
             VanillaAudioProvider::new(nbs.instrument_set.vanilla_instrument_count());
-        let audio_provider = Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>;
-        audio_provider
+        Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>
     };
     let song_name = nbs.header.song_info.name.clone();
     let renderer = NbsAudioRenderer::builder(nbs)
