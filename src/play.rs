@@ -77,8 +77,22 @@ pub fn command_play(
             .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf());
         //TODO: Skip adaptive locating if dir is already contains all custom instruments
         let dir = if adaptive_locating {
-            adaptive_locate_custom_instrument_dir(dir, &nbs.instrument_set)?
-                .context("No custom instruments found even with adaptive locating.")?
+            let dir = adaptive_locate_custom_instrument_dir(dir, &nbs.instrument_set)?
+                .context("No custom instruments found even with adaptive locating.")?;
+            nbs.instrument_set
+                .all_custom_instruments_mut()
+                .iter_mut()
+                .for_each(|ins| {
+                    //TODO: Replace unwrap to proper error handling
+                    let file_name = PathBuf::from(&ins.file_name)
+                        .file_name()
+                        .and_then(OsStr::to_str)
+                        .map(str::to_string);
+                    if let Some(file_name) = file_name {
+                        ins.file_name = file_name;
+                    }
+                });
+            dir
         } else {
             dir
         };
