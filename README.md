@@ -34,11 +34,19 @@ nbs play <file.nbs>
 #### With Custom Instrument
 
 ```bash
-nbs play <file.nbs> --custom-instrument-dir <sounds directory>
+nbs play <file.nbs> --custom-instrument <sounds directory>
 ```
+
+#### Adaptive Custom Instrument Locating
+locate custom instruments recursively in the folder that includes the nbs file
+
+```bash
+nbs play <file.nbs> --adaptive
+```
+
 
 #### Endless Looping
 
 ```bash
-nbs play <file.nbs> --looping
+nbs play <file.nbs> --loop
 ```
