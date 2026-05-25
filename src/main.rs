@@ -24,7 +24,7 @@ enum Commands {
         custom_instrument: Option<String>,
         #[arg(long, help = "Use adaptive custom instrument locating")]
         adaptive: bool,
-        #[arg(long, help = "Set the playback volume percentage (0%~200%)", default_value_t = 100, value_parser = clap::value_parser!(u8).range(0..=200))]
+        #[arg(short, long, help = "Set the playback volume percentage (0%~200%)", default_value_t = 100, value_parser = clap::value_parser!(u8).range(0..=200))]
         volume: u8,
         #[arg(
             short,
