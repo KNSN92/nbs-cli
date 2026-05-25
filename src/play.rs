@@ -77,22 +77,23 @@ pub fn command_play(
             .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf());
         //TODO: Skip adaptive locating if dir is already contains all custom instruments
         let dir = if adaptive_locating {
-            let dir = adaptive_locate_custom_instrument_dir(dir, &nbs.instrument_set)?
-                .context("No custom instruments found even with adaptive locating.")?;
-            nbs.instrument_set
-                .all_custom_instruments_mut()
-                .iter_mut()
-                .for_each(|ins| {
-                    //TODO: Replace unwrap to proper error handling
-                    let file_name = PathBuf::from(&ins.file_name)
-                        .file_name()
-                        .and_then(OsStr::to_str)
-                        .map(str::to_string);
-                    if let Some(file_name) = file_name {
-                        ins.file_name = file_name;
-                    }
-                });
-            dir
+            let adapted_dir = adaptive_locate_custom_instrument_dir(&dir, &nbs.instrument_set)?;
+            if adapted_dir.is_some() {
+                nbs.instrument_set
+                    .all_custom_instruments_mut()
+                    .iter_mut()
+                    .for_each(|ins| {
+                        //TODO: Replace unwrap to proper error handling
+                        let file_name = PathBuf::from(&ins.file_name)
+                            .file_name()
+                            .and_then(OsStr::to_str)
+                            .map(str::to_string);
+                        if let Some(file_name) = file_name {
+                            ins.file_name = file_name;
+                        }
+                    });
+            }
+            adapted_dir.unwrap_or(dir)
         } else {
             dir
         };
@@ -231,7 +232,7 @@ fn spawn_monoral_producer_thread(
 const MAX_ADAPTIVE_LOCATING_DEPTH: usize = 5;
 
 fn adaptive_locate_custom_instrument_dir(
-    file: PathBuf,
+    file: impl AsRef<Path>,
     instrument_set: &InstrumentSet,
 ) -> Result<Option<PathBuf>> {
     let custom_instrument_file_names = instrument_set
