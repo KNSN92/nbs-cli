@@ -28,8 +28,8 @@ use walkdir::WalkDir;
 
 pub fn command_play(
     file: String,
-    custom_instrument_dir: Option<String>,
-    adaptive_locating: bool,
+    custom_instrument: Option<String>,
+    adaptive: bool,
     volume: u8,
     looping: bool,
 ) -> Result<()> {
@@ -72,18 +72,17 @@ pub fn command_play(
     config.sample_rate = 48000.min(config.sample_rate);
 
     let audio_provider = if nbs.instrument_set.has_custom_instrument() {
-        let dir = custom_instrument_dir
+        let dir = custom_instrument
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf());
         //TODO: Skip adaptive locating if dir is already contains all custom instruments
-        let dir = if adaptive_locating {
+        let dir = if adaptive {
             let adapted_dir = adaptive_locate_custom_instrument_dir(&dir, &nbs.instrument_set)?;
             if adapted_dir.is_some() {
                 nbs.instrument_set
                     .all_custom_instruments_mut()
                     .iter_mut()
                     .for_each(|ins| {
-                        //TODO: Replace unwrap to proper error handling
                         let file_name = PathBuf::from(&ins.file_name)
                             .file_name()
                             .and_then(OsStr::to_str)
