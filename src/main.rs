@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use crate::commands::{command_info, command_play};
 
 mod commands;
+mod io;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]

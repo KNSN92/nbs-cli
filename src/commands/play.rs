@@ -1,30 +1,28 @@
 use std::{
     collections::{BTreeSet, HashMap},
     ffi::OsStr,
-    fs::File,
-    io::Read,
     path::{Path, PathBuf},
     sync::mpsc,
     thread,
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use console::style;
 use cpal::{
     OutputCallbackInfo,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use nbs_rust::{
-    Nbs,
     audio::{
         NbsAudioRenderer,
         provider::{FileAudioProvider, InstrumentAudioProvider, VanillaAudioProvider},
     },
     instrument::InstrumentSet,
-    io::midi::decoder::decode_from_midi,
 };
 use rtrb::{Producer, RingBuffer};
 use walkdir::WalkDir;
+
+use crate::io::try_load_nbs_or_midi;
 
 pub fn command_play(
     file: String,
@@ -33,28 +31,7 @@ pub fn command_play(
     volume: u8,
     looping: bool,
 ) -> Result<()> {
-    let mut nbs = match Nbs::open(&file) {
-        Ok(nbs) => nbs,
-        Err(nbs_e) => {
-            let mut buf = Vec::new();
-            File::open(&file)?.read_to_end(&mut buf)?;
-            match decode_from_midi(&buf) {
-                Ok(mut nbs) => {
-                    let song_name = Path::new(&file)
-                        .file_prefix()
-                        .and_then(OsStr::to_str)
-                        .unwrap_or("Unnamed Midi Song");
-                    nbs.header.song_info.name = song_name.to_string();
-                    nbs
-                }
-                Err(midi_e) => bail!(
-                    "Failed to open given file as NBS or MIDI: \n- NBS error: {}\n- MIDI error: {}",
-                    nbs_e,
-                    midi_e
-                ),
-            }
-        }
-    };
+    let mut nbs = try_load_nbs_or_midi(&file)?;
     if looping {
         nbs.header.song_meta.looping.enabled = true;
         nbs.header.song_meta.looping.count = None;
