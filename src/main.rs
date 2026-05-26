@@ -1,10 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use crate::{info::command_info, play::command_play};
+use crate::commands::{command_info, command_play};
 
-mod info;
-mod play;
+mod commands;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
