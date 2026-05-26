@@ -1,7 +1,7 @@
 use std::{ffi::OsStr, fs::File, io::Read, path::Path};
 
 use anyhow::{Result, bail};
-use nbs_rust::{Nbs, io::midi::decoder::decode_from_midi};
+use nbs_rust::{Nbs, io::midi::Midi2NbsDecoder};
 
 
 pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
@@ -11,7 +11,7 @@ pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
         Err(nbs_e) => {
             let mut buf = Vec::new();
             File::open(&path)?.read_to_end(&mut buf)?;
-            match decode_from_midi(&buf) {
+            match Midi2NbsDecoder::new().decode(&buf) {
                 Ok(nbs) => {
                     nbs
                 }
