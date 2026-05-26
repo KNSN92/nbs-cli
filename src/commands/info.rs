@@ -1,9 +1,10 @@
 use anyhow::Result;
 use console::Term;
-use nbs_rust::Nbs;
+
+use crate::io::try_load_nbs_or_midi;
 
 pub fn command_info(file: String) -> Result<()> {
-    let nbs = Nbs::open(&file)?;
+    let nbs = try_load_nbs_or_midi(&file)?;
     let term = Term::stdout();
     term.clear_screen()?;
     let style = term.style().green().bold();
