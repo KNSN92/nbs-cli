@@ -6,22 +6,23 @@ use crate::io::try_load_nbs_or_midi;
 pub fn command_info(file: String) -> Result<()> {
     let nbs = try_load_nbs_or_midi(&file)?;
     let term = Term::stdout();
-    term.clear_screen()?;
     let style = term.style().green().bold();
     term.write_line(
         &style
             .apply_to(format!(
-                "========== '{}' ==========\n",
+                "========== '{}' ==========",
                 nbs.header.song_info.name
             ))
             .to_string(),
     )?;
-    let style = term.style().blue();
-    term.write_line(&style.apply_to(nbs.header.song_info.description).to_string())?;
+    if !nbs.header.song_info.description.is_empty() {
+        let style = term.style().blue();
+        term.write_line(&format!("\n{:?}\n", &style.apply_to(nbs.header.song_info.description).to_string()))?;
+    }
     let style = term.style().yellow();
     term.write_line(
         &style
-            .apply_to(format!("\nAuthor: {}", nbs.header.song_info.author))
+            .apply_to(format!("Author: {}", nbs.header.song_info.author))
             .to_string(),
     )?;
     term.write_line(
