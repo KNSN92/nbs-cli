@@ -17,7 +17,7 @@ pub fn command_info(file: String) -> Result<()> {
     )?;
     if !nbs.header.song_info.description.is_empty() {
         let style = term.style().blue();
-        term.write_line(&format!("\n{:?}\n", &style.apply_to(nbs.header.song_info.description).to_string()))?;
+        term.write_line(&style.apply_to(format!("\n{}\n", nbs.header.song_info.description)).to_string())?;
     }
     let style = term.style().yellow();
     term.write_line(
