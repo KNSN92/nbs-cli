@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use nbs_rust::audio::SampleRate;
 
-use crate::commands::{command_info, command_play, command_record};
+use crate::commands::{command_info, command_midi, command_play, command_record};
 
 mod commands;
 mod io;
@@ -47,6 +47,11 @@ enum Commands {
         volume: u8,
         #[arg(short, long, default_value_t = nbs_rust::audio::HZ_48000, help = "Set the sample rate of the output WAV file")]
         sample_rate: SampleRate,
+    },
+    #[command(about = "Convert an Midi file to an NBS file")]
+    Midi {
+        midi_file: String,
+        nbs_file: String,
     }
 }
 
@@ -67,6 +72,7 @@ fn main() -> Result<()> {
             volume,
             r#loop,
         ),
-        Commands::Record { file, output, custom_instrument, adaptive, volume, sample_rate } => command_record(file, output, custom_instrument, adaptive, volume, sample_rate)
+        Commands::Record { file, output, custom_instrument, adaptive, volume, sample_rate } => command_record(file, output, custom_instrument, adaptive, volume, sample_rate),
+        Commands::Midi { midi_file, nbs_file } => command_midi(midi_file, nbs_file),
     }
 }
