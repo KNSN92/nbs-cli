@@ -1,6 +1,4 @@
-use std::{
-    path::PathBuf, sync::mpsc, thread
-};
+use std::{path::PathBuf, sync::mpsc, thread};
 
 use anyhow::{Result, anyhow};
 use console::style;
@@ -8,11 +6,7 @@ use cpal::{
     OutputCallbackInfo,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use nbs_rust::{
-    audio::{
-        NbsAudioRenderer,
-    },
-};
+use nbs_rust::audio::NbsAudioRenderer;
 use rtrb::{Producer, RingBuffer};
 
 use crate::io::{try_load_audio_provider, try_load_nbs_or_midi};
@@ -41,12 +35,16 @@ pub fn command_play(
     config.channels = config.channels.min(2);
     config.sample_rate = 48000.min(config.sample_rate);
 
-    let audio_provider = try_load_audio_provider(&mut nbs, custom_instrument.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf()), adaptive)?;
+    let audio_provider = try_load_audio_provider(
+        &mut nbs,
+        custom_instrument
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf()),
+        adaptive,
+    )?;
     let song_name = nbs.header.song_info.name.clone();
-    let renderer = NbsAudioRenderer::builder(nbs)
-        .sample_rate(config.sample_rate.try_into()?)
-        .audio_provider(audio_provider)
-        .build();
+    let renderer =
+        NbsAudioRenderer::with_audio_provider(nbs, config.sample_rate.try_into()?, audio_provider);
 
     let buf_len = (config.sample_rate as f32 * config.channels as f32 * 60.0).floor() as usize; // 1 minute buffer 60.0 is seconds
     let (producer, mut consumer) = RingBuffer::<f32>::new(buf_len);
