@@ -2,7 +2,7 @@ use std::{fs::File, path::PathBuf};
 
 use anyhow::Result;
 use hound::{SampleFormat, WavSpec, WavWriter};
-use nbs_rust::audio::{NbsAudioRenderer, SampleRate};
+use nbs_rust::audio::{NbsAudioRenderer, NoteAudioMissPolicy, SampleRate};
 
 use crate::io::{try_load_audio_provider, try_load_nbs_or_midi};
 
@@ -25,7 +25,10 @@ pub fn command_record(
             .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf()),
         adaptive,
     )?;
-    let renderer = NbsAudioRenderer::with_audio_provider(nbs, sample_rate, audio_provider);
+    let renderer = NbsAudioRenderer::builder(nbs, sample_rate)
+        .audio_provider(audio_provider)
+        .miss_policy(NoteAudioMissPolicy::Wait(None))
+        .build();
 
     let mut wav_file = File::create(output)?;
     let mut writer = WavWriter::new(
