@@ -65,5 +65,7 @@ pub fn command_record(
             prev_tick = current_tick;
         }
     }
+    drop(progressbar);
+    println!("Done✨");
     Ok(())
 }
