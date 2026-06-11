@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::mpsc, thread};
+use std::{borrow::Borrow, path::PathBuf, sync::mpsc, thread};
 
 use anyhow::{Result, anyhow};
 use console::style;
@@ -6,7 +6,7 @@ use cpal::{
     OutputCallbackInfo,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use nbs_rust::audio::NbsAudioRenderer;
+use nbs_rust::{Nbs, audio::NbsAudioRenderer};
 use rtrb::{Producer, RingBuffer};
 
 use crate::io::{try_load_audio_provider, try_load_nbs_or_midi};
@@ -83,9 +83,9 @@ pub fn command_play(
 }
 
 // TODO: marge this function and `spawn_monoral_producer_thread`
-fn spawn_stereo_producer_thread(
+fn spawn_stereo_producer_thread<P: Borrow<Nbs> + Send + 'static>(
     mut producer: Producer<f32>,
-    mut renderer: NbsAudioRenderer,
+    mut renderer: NbsAudioRenderer<P>,
     volume: f32,
 ) {
     thread::spawn(move || {
@@ -119,9 +119,9 @@ fn spawn_stereo_producer_thread(
     });
 }
 
-fn spawn_monoral_producer_thread(
+fn spawn_monoral_producer_thread<P: Borrow<Nbs> + Send + 'static>(
     mut producer: Producer<f32>,
-    mut renderer: NbsAudioRenderer,
+    mut renderer: NbsAudioRenderer<P>,
     volume: f32,
 ) {
     thread::spawn(move || {
