@@ -6,6 +6,7 @@ use cpal::{
     OutputCallbackInfo,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
+use crossbeam_utils::sync::Parker;
 use nbs_rust::{Nbs, audio::NbsAudioRenderer};
 use rtrb::{Producer, RingBuffer};
 
@@ -50,12 +51,14 @@ pub fn command_play(
     let (producer, mut consumer) = RingBuffer::<f32>::new(buf_len);
 
     let (end_send, end_recv) = mpsc::channel();
+    let parker = Parker::new();
+    let unparker = parker.unparker().clone();
     let mut end_send = Some(end_send);
     let volume = volume as f32 / 100.0;
     if monoral {
-        spawn_monoral_producer_thread(producer, renderer, volume);
+        spawn_monoral_producer_thread(producer, renderer, parker, volume);
     } else {
-        spawn_stereo_producer_thread(producer, renderer, volume);
+        spawn_stereo_producer_thread(producer, renderer, parker, volume);
     };
     let data_callback = move |output: &mut [f32], _info: &OutputCallbackInfo| {
         if consumer.is_empty() && consumer.is_abandoned() {
@@ -68,10 +71,7 @@ pub fn command_play(
 
         let filled_len = consumer.pop_partial_slice(output).0.len();
         output[filled_len..].fill(0.0);
-
-        if filled_len == 0 {
-            thread::yield_now();
-        }
+        unparker.unpark();
     };
     let stream =
         device.build_output_stream(&config, data_callback, |e| eprintln!("Error: {}", e), None)?;
@@ -86,6 +86,7 @@ pub fn command_play(
 fn spawn_stereo_producer_thread<P: Borrow<Nbs> + Send + 'static>(
     mut producer: Producer<f32>,
     mut renderer: NbsAudioRenderer<P>,
+    parker: Parker,
     volume: f32,
 ) {
     thread::spawn(move || {
@@ -97,7 +98,7 @@ fn spawn_stereo_producer_thread<P: Borrow<Nbs> + Send + 'static>(
                 break;
             }
             if producer.is_full() {
-                thread::yield_now();
+                parker.park();
                 continue;
             }
             let mut produced = remaining_len;
@@ -122,6 +123,7 @@ fn spawn_stereo_producer_thread<P: Borrow<Nbs> + Send + 'static>(
 fn spawn_monoral_producer_thread<P: Borrow<Nbs> + Send + 'static>(
     mut producer: Producer<f32>,
     mut renderer: NbsAudioRenderer<P>,
+    parker: Parker,
     volume: f32,
 ) {
     thread::spawn(move || {
@@ -133,7 +135,7 @@ fn spawn_monoral_producer_thread<P: Borrow<Nbs> + Send + 'static>(
                 break;
             }
             if producer.is_full() {
-                thread::yield_now();
+                parker.park();
                 continue;
             }
             let mut produced = remaining_len;
