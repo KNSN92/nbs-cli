@@ -82,49 +82,67 @@ pub fn command_play(
     Ok(())
 }
 
-// TODO: marge this function and `spawn_monoral_producer_thread`
 fn spawn_stereo_producer_thread<P: Borrow<Nbs> + Send + 'static>(
-    mut producer: Producer<f32>,
-    mut renderer: NbsAudioRenderer<P>,
+    producer: Producer<f32>,
+    renderer: NbsAudioRenderer<P>,
     parker: Parker,
     volume: f32,
 ) {
-    thread::spawn(move || {
-        let mut buf = vec![0.0; 1024].into_boxed_slice();
-        let mut remaining_len = 0;
-        let mut ended = false;
-        loop {
-            if ended && remaining_len == 0 {
-                break;
-            }
-            if producer.is_full() {
-                parker.park();
-                continue;
-            }
-            let mut produced = remaining_len;
+    spawn_producer_thread(
+        producer,
+        renderer,
+        parker,
+        volume,
+        |renderer, buf, remaining_len, volume, ended| {
+            let mut produced = 0;
             for frame in buf[remaining_len..].chunks_exact_mut(2) {
                 if let Some([l, r]) = renderer.next() {
                     frame[0] = l * volume;
                     frame[1] = r * volume;
                     produced += 2;
                 } else {
-                    ended = true;
+                    *ended = true;
                     break;
                 }
             }
-            let (_, remaining) = producer.push_partial_slice(&buf[..produced]);
-            remaining_len = remaining.len();
-            let buf_len = buf.len();
-            buf.copy_within((buf_len - remaining_len).., 0);
-        }
-    });
+            produced
+        },
+    );
 }
 
 fn spawn_monoral_producer_thread<P: Borrow<Nbs> + Send + 'static>(
+    producer: Producer<f32>,
+    renderer: NbsAudioRenderer<P>,
+    parker: Parker,
+    volume: f32,
+) {
+    spawn_producer_thread(
+        producer,
+        renderer,
+        parker,
+        volume,
+        |renderer, buf, remaining_len, volume, ended| {
+            let mut produced = 0;
+            for sample in &mut buf[remaining_len..] {
+                if let Some([l, r]) = renderer.next() {
+                    *sample = (l + r) / 2.0 * volume;
+                    produced += 1;
+                } else {
+                    *ended = true;
+                    break;
+                }
+            }
+            produced
+        },
+    );
+}
+
+fn spawn_producer_thread<P: Borrow<Nbs> + Send + 'static>(
     mut producer: Producer<f32>,
     mut renderer: NbsAudioRenderer<P>,
     parker: Parker,
     volume: f32,
+    produce: impl Fn(&mut NbsAudioRenderer<P>, &mut [f32], usize, f32, &mut bool) -> usize + Send + 'static,
 ) {
     thread::spawn(move || {
         let mut buf = vec![0.0; 1024].into_boxed_slice();
@@ -138,16 +156,13 @@ fn spawn_monoral_producer_thread<P: Borrow<Nbs> + Send + 'static>(
                 parker.park();
                 continue;
             }
-            let mut produced = remaining_len;
-            for sample in &mut buf[remaining_len..] {
-                if let Some([l, r]) = renderer.next() {
-                    *sample = (l + r) / 2.0 * volume;
-                    produced += 1;
-                } else {
-                    ended = true;
-                    break;
-                }
-            }
+            let produced = produce(
+                &mut renderer,
+                buf.as_mut(),
+                remaining_len,
+                volume,
+                &mut ended,
+            ) + remaining_len;
             let (_, remaining) = producer.push_partial_slice(&buf[..produced]);
             remaining_len = remaining.len();
             let buf_len = buf.len();
