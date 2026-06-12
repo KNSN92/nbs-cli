@@ -1,22 +1,29 @@
-use std::{collections::{BTreeSet, HashMap}, ffi::OsStr, fs::File, io::Read, path::{Path, PathBuf}};
+use std::{
+    collections::{BTreeSet, HashMap},
+    ffi::OsStr,
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, bail};
 use console::style;
-use nbs_rust::{Nbs, audio::provider::{FileAudioProvider, InstrumentAudioProvider, VanillaAudioProvider}, instrument::InstrumentSet, io::midi::Midi2NbsDecoder};
+use nbs_rust::{
+    Nbs,
+    audio::provider::{FileAudioProvider, InstrumentAudioProvider, VanillaAudioProvider},
+    instrument::InstrumentSet,
+    io::midi::Midi2NbsDecoder,
+};
 use walkdir::WalkDir;
-
 
 pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
     let mut nbs = match Nbs::open(&path) {
-        Ok(nbs) => nbs
-        ,
+        Ok(nbs) => nbs,
         Err(nbs_e) => {
             let mut buf = Vec::new();
             File::open(&path)?.read_to_end(&mut buf)?;
             match Midi2NbsDecoder::new().decode(&buf) {
-                Ok(nbs) => {
-                    nbs
-                }
+                Ok(nbs) => nbs,
                 Err(midi_e) => bail!(
                     "Failed to open given file as NBS or MIDI: \n- NBS error: {}\n- MIDI error: {}",
                     nbs_e,
@@ -26,7 +33,8 @@ pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
         }
     };
     if nbs.header.song_info.name.is_empty() {
-        let song_name = path.as_ref()
+        let song_name = path
+            .as_ref()
             .file_name()
             .and_then(OsStr::to_str)
             .take_if(|s| !s.is_empty())
@@ -36,7 +44,11 @@ pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
     Ok(nbs)
 }
 
-pub fn try_load_audio_provider(nbs: &mut Nbs, path: impl AsRef<Path>, adaptive: bool) -> Result<Box<dyn InstrumentAudioProvider + Send>> {
+pub fn try_load_audio_provider(
+    nbs: &mut Nbs,
+    path: impl AsRef<Path>,
+    adaptive: bool,
+) -> Result<Box<dyn InstrumentAudioProvider + Send>> {
     if nbs.instrument_set.has_custom_instrument() {
         let dir = path.as_ref().to_path_buf();
         //TODO: Skip adaptive locating if dir is already contains all custom instruments
