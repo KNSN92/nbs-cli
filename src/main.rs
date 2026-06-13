@@ -25,6 +25,12 @@ enum Commands {
         custom_instrument: Option<String>,
         #[arg(long, help = "Use adaptive custom instrument locating")]
         adaptive: bool,
+        #[arg(
+            long,
+            help = "If instrument audio is missing, treat it as a error and abort playback",
+            default_value_t = false
+        )]
+        strict: bool,
         #[arg(short, long, help = "Set the playback volume percentage (0%~200%)", default_value_t = 100, value_parser = clap::value_parser!(u8).range(0..=200))]
         volume: u8,
         #[arg(
@@ -43,6 +49,12 @@ enum Commands {
         custom_instrument: Option<String>,
         #[arg(long, help = "Use adaptive custom instrument locating")]
         adaptive: bool,
+        #[arg(
+            long,
+            help = "If instrument audio is missing, treat it as a error and abort playback",
+            default_value_t = false
+        )]
+        strict: bool,
         #[arg(short, long, help = "Set the playback volume percentage (0%~200%)", default_value_t = 100, value_parser = clap::value_parser!(u8).range(0..=200))]
         volume: u8,
         #[arg(short, long, default_value_t = nbs_rust::audio::HZ_48000, help = "Set the sample rate of the output WAV file")]
@@ -60,14 +72,16 @@ fn main() -> Result<()> {
             file,
             custom_instrument,
             adaptive,
+            strict,
             volume,
             r#loop,
-        } => command_play(file, custom_instrument, adaptive, volume, r#loop),
+        } => command_play(file, custom_instrument, adaptive, strict, volume, r#loop),
         Commands::Record {
             file,
             output,
             custom_instrument,
             adaptive,
+            strict,
             volume,
             sample_rate,
         } => command_record(
@@ -75,6 +89,7 @@ fn main() -> Result<()> {
             output,
             custom_instrument,
             adaptive,
+            strict,
             volume,
             sample_rate,
         ),

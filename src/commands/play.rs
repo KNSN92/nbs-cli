@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, path::PathBuf, sync::mpsc, thread};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use console::style;
 use cpal::{
     OutputCallbackInfo,
@@ -16,6 +16,7 @@ pub fn command_play(
     file: String,
     custom_instrument: Option<String>,
     adaptive: bool,
+    strict: bool,
     volume: u8,
     looping: bool,
 ) -> Result<()> {
@@ -36,13 +37,27 @@ pub fn command_play(
     config.channels = config.channels.min(2);
     config.sample_rate = 48000.min(config.sample_rate);
 
-    let audio_provider = try_load_audio_provider(
+    let (audio_provider, failed_custom_instruments) = try_load_audio_provider(
         &mut nbs,
         custom_instrument
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf()),
         adaptive,
     )?;
+    let log_level = if strict {
+        style("Error").red().bold()
+    } else {
+        style("Warning").yellow().bold()
+    };
+    for ci in &failed_custom_instruments {
+        eprintln!(
+            "{}: missing instrument audio `{}`",
+            log_level, &ci.file_name
+        );
+    }
+    if strict && !failed_custom_instruments.is_empty() {
+        bail!("Aborting due to missing instrument audio");
+    }
     let song_name = nbs.header.song_info.name.clone();
     let renderer =
         NbsAudioRenderer::with_audio_provider(nbs, config.sample_rate.try_into()?, audio_provider);
@@ -142,7 +157,9 @@ fn spawn_producer_thread<P: Borrow<Nbs> + Send + 'static>(
     mut renderer: NbsAudioRenderer<P>,
     parker: Parker,
     volume: f32,
-    produce: impl Fn(&mut NbsAudioRenderer<P>, &mut [f32], usize, f32, &mut bool) -> usize + Send + 'static,
+    produce: impl Fn(&mut NbsAudioRenderer<P>, &mut [f32], usize, f32, &mut bool) -> usize
+    + Send
+    + 'static,
 ) {
     thread::spawn(move || {
         let mut buf = vec![0.0; 1024].into_boxed_slice();

@@ -7,11 +7,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use console::style;
 use nbs_rust::{
     Nbs,
     audio::provider::{FileAudioProvider, InstrumentAudioProvider, VanillaAudioProvider},
-    instrument::InstrumentSet,
+    instrument::{CustomInstrument, InstrumentSet},
     io::midi::Midi2NbsDecoder,
 };
 use walkdir::WalkDir;
@@ -44,11 +43,14 @@ pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
     Ok(nbs)
 }
 
-pub fn try_load_audio_provider(
-    nbs: &mut Nbs,
+pub fn try_load_audio_provider<'a>(
+    nbs: &'a mut Nbs,
     path: impl AsRef<Path>,
     adaptive: bool,
-) -> Result<Box<dyn InstrumentAudioProvider + Send>> {
+) -> Result<(
+    Box<dyn InstrumentAudioProvider + Send>,
+    Vec<&'a CustomInstrument>,
+)> {
     if nbs.instrument_set.has_custom_instrument() {
         let dir = path.as_ref().to_path_buf();
         //TODO: Skip adaptive locating if dir is already contains all custom instruments
@@ -77,18 +79,17 @@ pub fn try_load_audio_provider(
             &nbs.instrument_set,
             nbs.header.song_meta.vanilla_instruments,
         );
-        for ci in failed_custom_instruments {
-            eprintln!(
-                "{}: failed to load custom instrument from `{}`",
-                style("warning").yellow().bold(),
-                dir.join(&ci.file_name).display()
-            );
-        }
-        Ok(Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>)
+        Ok((
+            Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>,
+            failed_custom_instruments,
+        ))
     } else {
         let audio_provider =
             VanillaAudioProvider::new(nbs.instrument_set.vanilla_instrument_count());
-        Ok(Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>)
+        Ok((
+            Box::new(audio_provider) as Box<dyn InstrumentAudioProvider + Send>,
+            Vec::new(),
+        ))
     }
 }
 

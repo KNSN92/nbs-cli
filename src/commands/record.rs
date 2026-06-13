@@ -1,6 +1,7 @@
 use std::{fs::File, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
+use console::style;
 use hound::{SampleFormat, WavSpec, WavWriter};
 use indicatif::{ProgressBar, ProgressStyle};
 use nbs_rust::audio::{NbsAudioRenderer, NoteAudioMissPolicy, SampleRate};
@@ -12,6 +13,7 @@ pub fn command_record(
     output: String,
     custom_instrument: Option<String>,
     adaptive: bool,
+    strict: bool,
     volume: u8,
     sample_rate: SampleRate,
 ) -> Result<()> {
@@ -19,13 +21,27 @@ pub fn command_record(
     if nbs.header.song_meta.looping.enabled && nbs.header.song_meta.looping.count.is_none() {
         nbs.header.song_meta.looping.enabled = false;
     }
-    let audio_provider = try_load_audio_provider(
+    let (audio_provider, failed_custom_instruments) = try_load_audio_provider(
         &mut nbs,
         custom_instrument
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(file).parent().unwrap().to_path_buf()),
         adaptive,
     )?;
+    let log_level = if strict {
+        style("Error").red().bold()
+    } else {
+        style("Warning").yellow().bold()
+    };
+    for ci in &failed_custom_instruments {
+        eprintln!(
+            "{}: missing instrument audio `{}`",
+            log_level, &ci.file_name
+        );
+    }
+    if strict && !failed_custom_instruments.is_empty() {
+        bail!("Aborting due to missing instrument audio");
+    }
     let style = ProgressStyle::default_bar()
         .template("[{elapsed_precise}] [{eta}] [{bar:40.green/blue}] {pos}/{len} ticks")
         .unwrap()
