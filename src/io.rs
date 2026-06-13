@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
+    env::current_dir,
     ffi::OsStr,
     fs::File,
     io::Read,
@@ -16,6 +17,7 @@ use nbs_rust::{
 use walkdir::WalkDir;
 
 pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
+    let path = current_dir()?.join(path);
     let mut nbs = match Nbs::open(&path) {
         Ok(nbs) => nbs,
         Err(nbs_e) => {
@@ -33,7 +35,6 @@ pub fn try_load_nbs_or_midi(path: impl AsRef<Path>) -> Result<Nbs> {
     };
     if nbs.header.song_info.name.is_empty() {
         let song_name = path
-            .as_ref()
             .file_name()
             .and_then(OsStr::to_str)
             .take_if(|s| !s.is_empty())
@@ -52,7 +53,7 @@ pub fn try_load_audio_provider<'a>(
     Vec<&'a CustomInstrument>,
 )> {
     if nbs.instrument_set.has_custom_instrument() {
-        let dir = path.as_ref().to_path_buf();
+        let dir = current_dir()?.join(path);
         //TODO: Skip adaptive locating if dir is already contains all custom instruments
         let dir = if adaptive {
             let adapted_dir = adaptive_locate_custom_instrument_dir(&dir, &nbs.instrument_set)?;
