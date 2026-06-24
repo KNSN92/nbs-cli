@@ -10,9 +10,9 @@ But it using also to test the [nbs-rust crate](https://github.com/KNSN92/nbs-rus
 
 - [x] Show information of nbs file
 - [x] Playback nbs file with custom instrument
-  - [ ] Adaptive custom instrument loading
-- [ ] Midi to nbs conversion
-- [ ] To audio files(wav/mp3) conversion
+  - [x] Adaptive custom instrument loading
+- [x] Midi to nbs conversion
+- [ ] To audio files(wav/mp3) conversion [WIP]
 - [ ] Bundle a nbs file and custom instrument into a single zip file, and play it without extracting
 
 ## Usage
