@@ -1,4 +1,9 @@
-use std::{borrow::Borrow, path::PathBuf, sync::mpsc, thread};
+use std::{
+    borrow::Borrow,
+    path::PathBuf,
+    sync::{Arc, mpsc},
+    thread,
+};
 
 use anyhow::{Result, anyhow, bail};
 use console::style;
@@ -7,10 +12,28 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use crossbeam_utils::sync::Parker;
-use nbs_rust::{Nbs, audio::NbsAudioRenderer};
+use indicatif::{ProgressBar, ProgressStyle};
+use nbs_rust::{Nbs, Tick, audio::NbsAudioRenderer};
 use rtrb::{Producer, RingBuffer};
 
 use crate::io::{try_load_audio_provider, try_load_nbs_or_midi};
+
+///! WARNING: 2の倍数である必要がある。ステレオ再生時に最後のサンプルが欠落し、ノイズが発生します。
+///! WARNING: This must be a multiple of 2. When playing in stereo, the last sample will be missing and noise will occur.
+const AUDIO_CHUNK_SIZE: usize = 1024;
+struct AudioChunk {
+    pub data: [f32; AUDIO_CHUNK_SIZE],
+    pub tick: Tick,
+}
+
+impl Default for AudioChunk {
+    fn default() -> Self {
+        Self {
+            data: [0.0; AUDIO_CHUNK_SIZE],
+            tick: 0,
+        }
+    }
+}
 
 pub fn command_play(
     file: String,
@@ -58,52 +81,84 @@ pub fn command_play(
     if strict && !failed_custom_instruments.is_empty() {
         bail!("Aborting due to missing instrument audio");
     }
+    let nbs = Arc::new(nbs);
     let song_name = nbs.header.song_info.name.clone();
     //TODO: いずれはユーザがコンフィグでcache容量や同時prefetch可能数を指定出来るようにしたい
-    let renderer =
-        NbsAudioRenderer::builder(nbs, config.sample_rate.try_into()?)
-            .audio_provider(audio_provider)
-            .cache_capacity(64.try_into().unwrap())
-            .prefetchable_capacity(64.try_into().unwrap())
-            .build();
+    let renderer = NbsAudioRenderer::builder(nbs.clone(), config.sample_rate.try_into()?)
+        .audio_provider(audio_provider)
+        .cache_capacity(64.try_into().unwrap())
+        .prefetchable_capacity(64.try_into().unwrap())
+        .build();
 
-    let buf_len = (config.sample_rate as f32 * config.channels as f32 * 10.0).floor() as usize; // 10 second buffer
-    let (producer, mut consumer) = RingBuffer::<f32>::new(buf_len);
+    let buf_len =
+        (config.sample_rate as usize * config.channels as usize / AUDIO_CHUNK_SIZE * 10) as usize; // about 10 second buffer
+    let (producer, mut consumer) = RingBuffer::new(buf_len);
 
-    let (end_send, end_recv) = mpsc::channel();
+    let (tick_send, tick_recv) = mpsc::channel();
+    let mut tick_send = Some(tick_send);
     let parker = Parker::new();
     let unparker = parker.unparker().clone();
-    let mut end_send = Some(end_send);
     let volume = volume as f32 / 100.0;
     if monoral {
         spawn_monoral_producer_thread(producer, renderer, parker, volume);
     } else {
         spawn_stereo_producer_thread(producer, renderer, parker, volume);
     };
+    let mut chunk = AudioChunk::default();
+    let mut took = AUDIO_CHUNK_SIZE;
+    let mut last_tick = Tick::MAX;
     let data_callback = move |output: &mut [f32], _info: &OutputCallbackInfo| {
-        if consumer.is_empty() && consumer.is_abandoned() {
-            if let Some(end_send) = end_send.take() {
-                let _ = end_send.send(());
-            }
+        if took >= AUDIO_CHUNK_SIZE && consumer.is_empty() && consumer.is_abandoned() {
             output.fill(0.0);
+            tick_send.take();
             return;
         }
-
-        let filled_len = consumer.pop_partial_slice(output).0.len();
-        output[filled_len..].fill(0.0);
-        unparker.unpark();
+        output.fill(0.0);
+        let mut filled = 0;
+        while filled < output.len() {
+            if took >= AUDIO_CHUNK_SIZE {
+                chunk = match consumer.pop() {
+                    Ok(chunk) => chunk,
+                    Err(_) => break,
+                };
+                unparker.unpark();
+                took = 0;
+            }
+            let to_fill = (AUDIO_CHUNK_SIZE - took).min(output.len() - filled);
+            output[filled..filled + to_fill].copy_from_slice(&chunk.data[took..took + to_fill]);
+            filled += to_fill;
+            took += to_fill;
+            if last_tick != chunk.tick {
+                last_tick = chunk.tick;
+                let _ = tick_send.as_ref().unwrap().send(chunk.tick);
+            }
+        }
     };
     let stream =
         device.build_output_stream(&config, data_callback, |e| eprintln!("Error: {}", e), None)?;
     println!("♪ Playing {} ♪", style(format!("`{}`", song_name)).yellow());
+    let looping_str = if looping {
+        &style(" (looping)").bold().yellow().to_string()
+    } else {
+        ""
+    };
+    let style = ProgressStyle::default_bar()
+        .template(&format!(
+            "({{pos}}/{{len}} ticks){looping_str} [{{bar:60.green/blue}}] [{{elapsed_precise}}]"
+        ))
+        .unwrap()
+        .progress_chars("=◎◎-");
+    let progressbar = ProgressBar::new(nbs.note_blocks.ticks_len() as u64).with_style(style);
     stream.play()?;
-    end_recv.recv()?;
+    while let Ok(tick) = tick_recv.recv() {
+        progressbar.set_position(tick as u64);
+    }
     stream.pause()?;
     Ok(())
 }
 
 fn spawn_stereo_producer_thread<P: Borrow<Nbs> + Send + 'static>(
-    producer: Producer<f32>,
+    producer: Producer<AudioChunk>,
     renderer: NbsAudioRenderer<P>,
     parker: Parker,
     volume: f32,
@@ -113,25 +168,22 @@ fn spawn_stereo_producer_thread<P: Borrow<Nbs> + Send + 'static>(
         renderer,
         parker,
         volume,
-        |renderer, buf, remaining_len, volume, ended| {
-            let mut produced = 0;
-            for frame in buf[remaining_len..].chunks_exact_mut(2) {
+        |renderer, buf, volume| {
+            for frame in buf.chunks_exact_mut(2) {
                 if let Some([l, r]) = renderer.next() {
                     frame[0] = l * volume;
                     frame[1] = r * volume;
-                    produced += 2;
                 } else {
-                    *ended = true;
-                    break;
+                    return true;
                 }
             }
-            produced
+            false
         },
     );
 }
 
 fn spawn_monoral_producer_thread<P: Borrow<Nbs> + Send + 'static>(
-    producer: Producer<f32>,
+    producer: Producer<AudioChunk>,
     renderer: NbsAudioRenderer<P>,
     parker: Parker,
     volume: f32,
@@ -141,54 +193,39 @@ fn spawn_monoral_producer_thread<P: Borrow<Nbs> + Send + 'static>(
         renderer,
         parker,
         volume,
-        |renderer, buf, remaining_len, volume, ended| {
-            let mut produced = 0;
-            for sample in &mut buf[remaining_len..] {
+        |renderer, buf, volume| {
+            for sample in buf {
                 if let Some([l, r]) = renderer.next() {
                     *sample = (l + r) / 2.0 * volume;
-                    produced += 1;
                 } else {
-                    *ended = true;
-                    break;
+                    return true;
                 }
             }
-            produced
+            false
         },
     );
 }
 
 fn spawn_producer_thread<P: Borrow<Nbs> + Send + 'static>(
-    mut producer: Producer<f32>,
+    mut producer: Producer<AudioChunk>,
     mut renderer: NbsAudioRenderer<P>,
     parker: Parker,
     volume: f32,
-    produce: impl Fn(&mut NbsAudioRenderer<P>, &mut [f32], usize, f32, &mut bool) -> usize
-    + Send
-    + 'static,
+    produce: impl Fn(&mut NbsAudioRenderer<P>, &mut [f32], f32) -> bool + Send + 'static,
 ) {
     thread::spawn(move || {
-        let mut buf = vec![0.0; 1024].into_boxed_slice();
-        let mut remaining_len = 0;
-        let mut ended = false;
         loop {
-            if ended && remaining_len == 0 {
-                break;
-            }
             if producer.is_full() {
                 parker.park();
                 continue;
             }
-            let produced = produce(
-                &mut renderer,
-                buf.as_mut(),
-                remaining_len,
-                volume,
-                &mut ended,
-            ) + remaining_len;
-            let (_, remaining) = producer.push_partial_slice(&buf[..produced]);
-            remaining_len = remaining.len();
-            let buf_len = buf.len();
-            buf.copy_within((buf_len - remaining_len).., 0);
+            let mut chunk = AudioChunk::default();
+            let ended = produce(&mut renderer, &mut chunk.data, volume);
+            chunk.tick = renderer.current_tick();
+            producer.push(chunk).unwrap();
+            if ended {
+                break;
+            }
         }
     });
 }
