@@ -59,10 +59,15 @@ pub fn command_play(
         bail!("Aborting due to missing instrument audio");
     }
     let song_name = nbs.header.song_info.name.clone();
+    //TODO: いずれはユーザがコンフィグでcache容量や同時prefetch可能数を指定出来るようにしたい
     let renderer =
-        NbsAudioRenderer::with_audio_provider(nbs, config.sample_rate.try_into()?, audio_provider);
+        NbsAudioRenderer::builder(nbs, config.sample_rate.try_into()?)
+            .audio_provider(audio_provider)
+            .cache_capacity(64.try_into().unwrap())
+            .prefetchable_capacity(64.try_into().unwrap())
+            .build();
 
-    let buf_len = (config.sample_rate as f32 * config.channels as f32 * 60.0).floor() as usize; // 1 minute buffer 60.0 is seconds
+    let buf_len = (config.sample_rate as f32 * config.channels as f32 * 10.0).floor() as usize; // 10 second buffer
     let (producer, mut consumer) = RingBuffer::<f32>::new(buf_len);
 
     let (end_send, end_recv) = mpsc::channel();
