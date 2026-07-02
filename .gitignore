@@ -5,3 +5,6 @@
 
 # 言わずもがな
 .DS_Store
+
+# cargo-flamegraph
+flamegraph*.svg
