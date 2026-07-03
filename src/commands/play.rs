@@ -24,6 +24,7 @@ const AUDIO_CHUNK_SIZE: usize = 1024;
 struct AudioChunk {
     pub data: [f32; AUDIO_CHUNK_SIZE],
     pub tick: Tick,
+    pub tempo: f32,
 }
 
 impl Default for AudioChunk {
@@ -31,8 +32,14 @@ impl Default for AudioChunk {
         Self {
             data: [0.0; AUDIO_CHUNK_SIZE],
             tick: 0,
+            tempo: 0.0,
         }
     }
+}
+
+enum TickTempo {
+    Tick(Tick),
+    Tempo(f32),
 }
 
 pub fn command_play(
@@ -107,6 +114,7 @@ pub fn command_play(
     let mut chunk = AudioChunk::default();
     let mut took = AUDIO_CHUNK_SIZE;
     let mut last_tick = Tick::MAX;
+    let mut last_tempo = f32::NAN;
     let data_callback = move |output: &mut [f32], _info: &OutputCallbackInfo| {
         if took >= AUDIO_CHUNK_SIZE && consumer.is_empty() && consumer.is_abandoned() {
             output.fill(0.0);
@@ -130,7 +138,11 @@ pub fn command_play(
             took += to_fill;
             if last_tick != chunk.tick {
                 last_tick = chunk.tick;
-                let _ = tick_send.as_ref().unwrap().send(chunk.tick);
+                let _ = tick_send.as_ref().unwrap().send(TickTempo::Tick(chunk.tick));
+            }
+            if last_tempo != chunk.tempo {
+                last_tempo = chunk.tempo;
+                let _ = tick_send.as_ref().unwrap().send(TickTempo::Tempo(chunk.tempo));
             }
         }
     };
@@ -144,14 +156,17 @@ pub fn command_play(
     };
     let style = ProgressStyle::default_bar()
         .template(&format!(
-            "({{pos}}/{{len}} ticks){looping_str} [{{bar:60.green/blue}}] [{{elapsed_precise}}]"
+            "[{{pos}}/{{len}} ticks] ({{msg}}tps){looping_str} [{{bar:60.green/blue}}] [{{elapsed_precise}}]"
         ))
         .unwrap()
         .progress_chars("=◎◎-");
     let progressbar = ProgressBar::new(nbs.note_blocks.ticks_len() as u64).with_style(style);
     stream.play()?;
-    while let Ok(tick) = tick_recv.recv() {
-        progressbar.set_position(tick as u64);
+    while let Ok(tick_tempo) = tick_recv.recv() {
+        match tick_tempo {
+            TickTempo::Tick(tick) => progressbar.set_position(tick as u64),
+            TickTempo::Tempo(tempo) => progressbar.set_message(format!("{:.1}", tempo)),
+        }
     }
     stream.pause()?;
     Ok(())
@@ -222,6 +237,7 @@ fn spawn_producer_thread<P: Borrow<Nbs> + Send + 'static>(
             let mut chunk = AudioChunk::default();
             let ended = produce(&mut renderer, &mut chunk.data, volume);
             chunk.tick = renderer.current_tick();
+            chunk.tempo = renderer.current_tempo();
             producer.push(chunk).unwrap();
             if ended {
                 break;
