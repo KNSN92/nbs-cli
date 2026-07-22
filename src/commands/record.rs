@@ -66,9 +66,7 @@ pub fn command_record(
     progressbar.set_position(prev_tick as u64);
     let volume = volume as f32 / 100.0;
     loop {
-        let [mut sample_l, mut sample_r] = if let Some(frame) = renderer.next() {
-            frame
-        } else {
+        let Some([mut sample_l, mut sample_r]) = renderer.next() else {
             break;
         };
         sample_l *= volume;
