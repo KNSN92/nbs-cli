@@ -39,7 +39,7 @@ impl Default for AudioChunk {
     }
 }
 
-enum TickTempo {
+enum SongMetaEvent {
     Tick(Tick),
     Tempo(f32),
     PlayingSoundsCount(usize),
@@ -142,15 +142,26 @@ pub fn command_play(
             took += to_fill;
             if last_tick != chunk.tick {
                 last_tick = chunk.tick;
-                let _ = tick_send.as_ref().unwrap().send(TickTempo::Tick(chunk.tick));
+                let _ = tick_send
+                    .as_ref()
+                    .unwrap()
+                    .send(SongMetaEvent::Tick(chunk.tick));
             }
             if last_tempo != chunk.tempo {
                 last_tempo = chunk.tempo;
-                let _ = tick_send.as_ref().unwrap().send(TickTempo::Tempo(chunk.tempo));
+                let _ = tick_send
+                    .as_ref()
+                    .unwrap()
+                    .send(SongMetaEvent::Tempo(chunk.tempo));
             }
             if last_playing_sounds_count != chunk.playing_sounds_count {
                 last_playing_sounds_count = chunk.playing_sounds_count;
-                let _ = tick_send.as_ref().unwrap().send(TickTempo::PlayingSoundsCount(chunk.playing_sounds_count));
+                let _ = tick_send
+                    .as_ref()
+                    .unwrap()
+                    .send(SongMetaEvent::PlayingSoundsCount(
+                        chunk.playing_sounds_count,
+                    ));
             }
         }
     };
@@ -172,11 +183,13 @@ pub fn command_play(
     stream.play()?;
     let mut tempo = 0.0;
     let mut playing_sounds_count = 0;
-    while let Ok(tick_tempo) = tick_recv.recv() {
-        match tick_tempo {
-            TickTempo::Tick(tick) => progressbar.set_position(tick as u64),
-            TickTempo::Tempo(t) => tempo = t,
-            TickTempo::PlayingSoundsCount(count) => playing_sounds_count = count,
+    while let Ok(song_meta_event) = tick_recv.recv() {
+        match song_meta_event {
+            SongMetaEvent::Tick(tick) => progressbar.set_position(tick as u64),
+            SongMetaEvent::Tempo(t) => tempo = t,
+            SongMetaEvent::PlayingSoundsCount(count) => {
+                playing_sounds_count = count;
+            }
         }
         progressbar.set_message(format!("({:.1}tps) ({} sounds) ", tempo, playing_sounds_count));
     }
