@@ -183,15 +183,20 @@ pub fn command_play(
     stream.play()?;
     let mut tempo = 0.0;
     let mut playing_sounds_count = 0;
+    let mut max_playing_sounds_count = 0;
     while let Ok(song_meta_event) = tick_recv.recv() {
         match song_meta_event {
             SongMetaEvent::Tick(tick) => progressbar.set_position(tick as u64),
             SongMetaEvent::Tempo(t) => tempo = t,
             SongMetaEvent::PlayingSoundsCount(count) => {
                 playing_sounds_count = count;
+                max_playing_sounds_count = max_playing_sounds_count.max(count);
             }
         }
-        progressbar.set_message(format!("({:.1}tps) ({} sounds) ", tempo, playing_sounds_count));
+        progressbar.set_message(format!(
+            "({:.1}tps) ({} notes / {} max) ",
+            tempo, playing_sounds_count, max_playing_sounds_count
+        ));
     }
     stream.pause()?;
     Ok(())
