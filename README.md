@@ -14,6 +14,8 @@ But it using also to test the [nbs-rust crate](https://github.com/KNSN92/nbs-rus
 - [x] Midi to nbs conversion
 - [ ] To audio files(wav/mp3) conversion [WIP]
 - [ ] Bundle a nbs file and custom instrument into a single zip file, and play it without extracting
+- [ ] Stateful or stateless nbs editor, it can add or remove notes, change header information like tempo, title, etc, and test quickly playback the changes without saving the file, and save the file when done.
+- [ ] Keyboard that can play the notes from pressing the keys, and that can record the notes into a nbs file.
 
 ## Usage
 
